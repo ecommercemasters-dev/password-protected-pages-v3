@@ -51,27 +51,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     orderBy: { createdAt: 'desc' }
   });
   
-  // Verificar si el script tag ya existe
-  const scriptTagResponse = await admin.graphql(`
-    query getScriptTags {
-      scriptTags(first: 10) {
-        edges {
-          node {
-            id
-            src
-          }
-        }
-      }
-    }
-  `);
-  
-  const scriptTagData = await scriptTagResponse.json();
-  const existingScripts = scriptTagData.data?.scriptTags?.edges || [];
-  const hasPasswordScript = existingScripts.some(edge => 
-    edge.node.src?.includes('password-protection.js')
-  );
-  
-  return { pages, protectedPages, hasPasswordScript };
+  return { pages, protectedPages };
 };
 
 export const action = async ({ request }: ActionFunctionArgs) => {
@@ -125,48 +105,6 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     }
   }
   
-  if (action === "install_script") {
-    try {
-      const scriptTagResponse = await admin.graphql(`
-        mutation scriptTagCreate($input: ScriptTagInput!) {
-          scriptTagCreate(input: $input) {
-            scriptTag {
-              id
-              src
-            }
-            userErrors {
-              field
-              message
-            }
-          }
-        }
-      `, {
-        variables: {
-          input: {
-            src: `https://joining-finishing-correct-lots.trycloudflare.com/password-protection.js`
-          }
-        }
-      });
-      
-      const scriptTagData = await scriptTagResponse.json();
-      
-      if (scriptTagData.data?.scriptTagCreate?.userErrors?.length > 0) {
-        return { 
-          success: false, 
-          message: `Script installation failed: ${scriptTagData.data.scriptTagCreate.userErrors[0].message}`
-        };
-      }
-      
-      return { 
-        success: true, 
-        message: "Password protection script installed successfully"
-      };
-    } catch (error) {
-      console.error('Error installing script:', error);
-      return { success: false, message: "Failed to install protection script" };
-    }
-  }
-  
   if (action === "remove_protection") {
     const pageId = formData.get("pageId") as string;
     
@@ -189,7 +127,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 };
 
 export default function Index() {
-  const { pages, protectedPages, hasPasswordScript } = useLoaderData<typeof loader>();
+  const { pages, protectedPages } = useLoaderData<typeof loader>();
   const fetcher = useFetcher<typeof action>();
   const shopify = useAppBridge();
   
@@ -230,12 +168,6 @@ export default function Index() {
     fetcher.submit(formData, { method: "POST" });
   };
 
-  const handleInstallScript = () => {
-    const formData = new FormData();
-    formData.append("action", "install_script");
-    fetcher.submit(formData, { method: "POST" });
-  };
-
   const handleRemoveProtection = (pageId: string) => {
     const formData = new FormData();
     formData.append("action", "remove_protection");
@@ -270,20 +202,6 @@ export default function Index() {
       <TitleBar title="Password Protected Pages" />
 
       <BlockStack gap="500">
-        {!hasPasswordScript && (
-          <Banner
-            title="Setup Required"
-            tone="warning"
-            action={{
-              content: "Install Protection Script",
-              onAction: handleInstallScript,
-              loading: isLoading
-            }}
-          >
-            <p>To protect pages on your storefront, you need to install the password protection script. This will enable the password forms to appear when visitors try to access protected pages.</p>
-          </Banner>
-        )}
-        
         <Layout>
           <Layout.Section>
             <Card>
