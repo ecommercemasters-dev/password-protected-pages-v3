@@ -1,0 +1,151 @@
+{% comment %}
+  Password Protection App Block
+  Checks if current page is protected and shows password form
+{% endcomment %}
+
+<script>
+(function() {
+  const currentPath = window.location.pathname;
+  
+  if (currentPath.startsWith('/pages/')) {
+    const pageHandle = currentPath.split('/pages/')[1];
+    const shop = '{{ shop.permanent_domain }}';
+    
+    // Verificar si ya se validó la contraseña en esta sesión
+    if (sessionStorage.getItem(`protected_${pageHandle}`) === 'true') {
+      return; // No mostrar formulario si ya se validó
+    }
+    
+    checkPageProtection(shop, pageHandle);
+  }
+  
+  async function checkPageProtection(shop, pageHandle) {
+    try {
+      const response = await fetch(`/apps/password-protection/password-check?shop=${shop}&page=${pageHandle}`);
+      const data = await response.json();
+      
+      if (data.protected) {
+        showPasswordForm(shop, pageHandle, data.pageTitle);
+      }
+    } catch (error) {
+      console.error('Error checking page protection:', error);
+    }
+  }
+  
+  function showPasswordForm(shop, pageHandle, pageTitle) {
+    // Ocultar el contenido original
+    document.body.style.display = 'none';
+    
+    // Crear overlay del formulario
+    const overlay = document.createElement('div');
+    overlay.id = 'password-protection-overlay';
+    overlay.innerHTML = `
+      <div style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(255, 255, 255, 0.98); display: flex; align-items: center; justify-content: center; z-index: 10000; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
+        <div style="background: white; padding: 2.5rem; border-radius: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.15); text-align: center; max-width: 420px; width: 90%; border: 1px solid #e1e5e9;">
+          <div style="font-size: 3rem; margin-bottom: 1rem;">🔒</div>
+          <h2 style="margin: 0 0 1rem 0; color: #1a1a1a; font-size: 1.5rem; font-weight: 600;">Protected Page</h2>
+          <p style="margin: 0 0 2rem 0; color: #6b7280; line-height: 1.6; font-size: 1rem;">This page is password protected. Please enter the password to continue.</p>
+          <form id="password-form" style="margin-bottom: 1rem;">
+            <input type="password" id="page-password" placeholder="Enter password" style="width: 100%; padding: 16px 20px; margin: 0 0 1.5rem 0; border: 2px solid #e1e5e9; border-radius: 8px; font-size: 16px; box-sizing: border-box; transition: border-color 0.2s; outline: none;" onfocus="this.style.borderColor='#007cba'" onblur="this.style.borderColor='#e1e5e9'">
+            <button type="submit" style="background: linear-gradient(135deg, #007cba 0%, #0056a3 100%); color: white; border: none; padding: 16px 32px; border-radius: 8px; cursor: pointer; font-size: 16px; font-weight: 600; width: 100%; transition: transform 0.2s, box-shadow 0.2s;" onmouseover="this.style.transform='translateY(-1px)'; this.style.boxShadow='0 4px 12px rgba(0,124,186,0.3)'" onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='none'">
+              Access Page
+            </button>
+          </form>
+          <div id="error-message" style="color: #ef4444; margin-top: 1rem; font-size: 14px; font-weight: 500;"></div>
+        </div>
+      </div>
+    `;
+    
+    document.body.appendChild(overlay);
+    document.getElementById('page-password').focus();
+    
+    document.getElementById('password-form').addEventListener('submit', async function(e) {
+      e.preventDefault();
+      const password = document.getElementById('page-password').value;
+      await validatePassword(shop, pageHandle, password);
+    });
+  }
+  
+  async function validatePassword(shop, pageHandle, password) {
+    const errorElement = document.getElementById('error-message');
+    const submitButton = document.querySelector('#password-form button');
+    const passwordInput = document.getElementById('page-password');
+    
+    // Indicar que se está validando
+    submitButton.textContent = 'Validating...';
+    submitButton.disabled = true;
+    submitButton.style.opacity = '0.7';
+    
+    try {
+      const formData = new FormData();
+      formData.append('shop', shop);
+      formData.append('page', pageHandle);
+      formData.append('password', password);
+      
+      const response = await fetch('/apps/password-protection/password-check', {
+        method: 'POST',
+        body: formData
+      });
+      
+      const data = await response.json();
+      
+      if (data.success) {
+        // Acceso concedido
+        document.getElementById('password-protection-overlay').remove();
+        document.body.style.display = '';
+        
+        // Guardar en sessionStorage para esta sesión
+        sessionStorage.setItem(`protected_${pageHandle}`, 'true');
+      } else {
+        // Contraseña incorrecta
+        errorElement.textContent = data.message || 'Invalid password. Please try again.';
+        passwordInput.value = '';
+        passwordInput.focus();
+        
+        // Efecto de shake en error
+        passwordInput.style.animation = 'shake 0.5s ease-in-out';
+        setTimeout(() => {
+          passwordInput.style.animation = '';
+        }, 500);
+      }
+    } catch (error) {
+      errorElement.textContent = 'Connection error. Please try again.';
+    } finally {
+      // Restaurar botón
+      submitButton.textContent = 'Access Page';
+      submitButton.disabled = false;
+      submitButton.style.opacity = '1';
+    }
+  }
+})();
+</script>
+
+<style>
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-5px); }
+  75% { transform: translateX(5px); }
+}
+</style>
+</script>
+
+<style>
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-5px); }
+  75% { transform: translateX(5px); }
+}
+</style>
+
+{% schema %}
+{
+  "name": "Password Protection",
+  "target": "head", 
+  "settings": [
+    {
+      "type": "paragraph",
+      "content": "This block automatically protects pages with passwords. No configuration needed."
+    }
+  ]
+}
+{% endschema %}
